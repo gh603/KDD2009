@@ -6,9 +6,9 @@ import logging
 from sklearn.decomposition import PCA
 
 def log():
-    logging.basicConfig()
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s %(levelname)s %(message)s')
     logger = logging.getLogger('KDD2009')
-    logger.setLevel(logging.INFO)
     return logger
 
 logger = log()
@@ -86,13 +86,13 @@ def getMissingProportion(X):
     missing_proportions = np.array(missing_proportions)
     return missing_proportions
 
-
 def drawMissingProportion(missing_proportions):
     plt.hist(missing_proportions, 20, normed=1, facecolor='green',alpha=0.75)
     plt.title("Missing value proportion histogram")
     plt.xlabel("Proportion of Missing Values")
     plt.ylabel("Frequency")
     plt.axis([0.0, 1.0, 0.0, 14.0])
+    plt.savefig('Missing_proportion.png')
     # plt.show()
 
 # Count # of missing values of each feature
@@ -249,4 +249,81 @@ print(testX.shape)
 logger.info('Finished feature engineering through PCA')
 
 ############################## Build Model #################################################
-# Train and test your model using trainX, validateX, testX
+# Train and test your model using (trainX, trainY), (validateX,validateY), (testX, testY)
+# Hui Ge - Fit Naive Bayes Model
+from sklearn.naive_bayes import GaussianNB
+from sklearn.ensemble import BaggingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+from time import time
+
+def benchmark(clf, trainX, trainY, testX, testY, logger):
+    clf_descr = str(clf).split('(')[0]
+    logger.info('Start to fit %s' % clf_descr)
+    # Train the clf, and record the training time
+    t0 = time()
+    clf.fit(trainX, trainY)
+    train_time = time() - t0
+    print('Training time: %0.3fs' % train_time)
+
+    # Fit the clf to the test dataset, and record the testing time
+    t0 = time()
+    predict = clf.predict(testX)
+    test_time = time() - t0
+    print('Testing time: %0.3fs' % test_time)
+
+    score = float(accuracy_score(testY, predict, normalize=False)) / len(testY)
+    print('Accuracy of {0}: {1:.2%}'.format(clf_descr, score))
+
+    logger.info('Finished fitting %s' % clf_descr)
+    return clf_descr, score, train_time, test_time
+
+def drawModelComparison(results):
+    indices = np.arange(len(results))
+    results = [[result[i] for result in results] for i in range(4)]
+    clf, score, train_time, test_time = results
+
+    train_time = np.array(train_time) / np.max(train_time)
+    test_time = np.array(test_time) / np.max(test_time)
+
+    plt.figure(figsize=(12, 8))
+    plt.title("Model Comparison")
+    plt.barh(indices, score, .2, label="score", color='navy')
+    plt.barh(indices + .3, train_time, .2, label="training time",
+             color='c')
+    plt.barh(indices + .6, test_time, .2, label="test time", color='darkorange')
+    plt.yticks(())
+    plt.legend(loc='best')
+    plt.subplots_adjust(left=.25)
+    plt.subplots_adjust(top=.95)
+    plt.subplots_adjust(bottom=.05)
+
+    for i, c in zip(indices, clf):
+        plt.text(-.3, i, c)
+
+    plt.savefig('Model_Comparison.png')
+
+# Gaussian Naive Bayes
+gnb = GaussianNB()
+# Logistic Regression
+lr = LogisticRegression(random_state=1)
+# Random Forest Classifier
+rfc = RandomForestClassifier(random_state=1)
+# Voting classifier
+vc = VotingClassifier(estimators=[('lr', lr), ('gnb', gnb), ('rfc', rfc)], voting='hard')
+# Bagging classifier
+bagging_gnb = BaggingClassifier(GaussianNB(), max_samples=0.5, max_features=0.5)
+
+# Result
+results = []
+for clf, name in ((gnb, 'Gaussian Naive Bayes'),
+                  (lr, 'Logistic Regression'),
+                  (rfc, 'Random Forest'),
+                  (vc, 'Voting Classifier'),
+                  (bagging_gnb, 'Bagging')):
+    results.append(benchmark(clf, trainX, trainY, testX, testY, logger))
+
+drawModelComparison(results)
+
+
